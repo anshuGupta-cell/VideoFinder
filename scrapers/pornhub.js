@@ -1,64 +1,62 @@
-const { getHtml } = require("./base");
 const cheerio = require("cheerio");
+
+const {
+  getHtml,
+  absoluteUrl,
+  formatViews,
+  formatDuration
+} = require("./base");
 
 const BASE = "https://www.pornhub.com";
 
-function getAbsoluteUrl(value) {
-  if (
-    !value ||
-    typeof value !== "string" ||
-    value.trim() === "undefined" ||
-    value.trim() === "null"
-  ) {
-    return null;
-  }
-
-  try {
-    const url = new URL(value.trim(), BASE);
-
-    if (!["http:", "https:"].includes(url.protocol)) {
-      return null;
-    }
-
-    return url.href;
-  } catch {
-    return null;
-  }
-}
-
 async function search({ q, page = 1 }) {
-  const url =
-    `${BASE}/video/search?search=${encodeURIComponent(q)}` +
-    (page > 1 ? `&page=${page}` : "");
+  const searchUrl = new URL("/video/search", BASE);
 
-  const html = await getHtml(url);
+  searchUrl.searchParams.set("search", q);
+
+  if (page > 1) {
+    searchUrl.searchParams.set("page", String(page));
+  }
+
+  const html = await getHtml(searchUrl.href);
   const $ = cheerio.load(html);
   const results = [];
 
   $('li[class*="videoSearchList_"]').each((_, element) => {
     const card = $(element);
+
     const imageLink = card.find("a.imageLink").first();
     const titleLink = card.find("a.thumbnailTitle").first();
 
-    const title = titleLink.text().trim();
-    const videoUrl = getAbsoluteUrl(titleLink.attr("href"));
+    const title = titleLink.text().replace(/\s+/g, " ").trim();
 
-    if (!title || !videoUrl) return;
+    const videoUrl = absoluteUrl(
+      titleLink.attr("href"),
+      BASE
+    );
 
-    const thumbnail = getAbsoluteUrl(
+    if (!title || !videoUrl) {
+      return;
+    }
+
+    const thumbnail = absoluteUrl(
       imageLink.find("img.videoThumb").attr("src") ||
-      imageLink.attr("data-poster")
+        imageLink.attr("data-poster"),
+      BASE
     );
 
-    const preview = getAbsoluteUrl(
-      imageLink.attr("data-webm")
+    const preview = absoluteUrl(
+      imageLink.attr("data-webm"),
+      BASE
     );
 
-    const duration =
-      card.find(".duration .time").first().text().trim();
+    const duration = formatDuration(
+      card.find(".duration .time").first().text()
+    );
 
-    const views =
-      card.find(".videoViews").first().text().trim();
+    const views = formatViews(
+      card.find(".videoViews").first().text()
+    );
 
     results.push({
       id: card.attr("data-video-id") || null,
@@ -74,7 +72,6 @@ async function search({ q, page = 1 }) {
     });
   });
 
-  // Remove duplicate video URLs.
   const unique = [
     ...new Map(
       results.map((video) => [video.videoUrl, video])
