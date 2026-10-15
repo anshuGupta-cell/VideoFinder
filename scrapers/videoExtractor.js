@@ -43,14 +43,18 @@ async function extractVideo(url) {
   const { stdout } = await execFileAsync(
     YT_DLP_COMMAND,
     [
-      "--dump-single-json",
-      "--no-warnings",
-      "--no-playlist",
-      "--skip-download",
-      "--format",
-      "best",
-      parsed.href
-    ],
+      
+  "-m",
+  "yt_dlp",
+  "--dump-single-json",
+  "--no-warnings",
+  "--no-playlist",
+  "--skip-download",
+  "--format",
+  "best",
+  parsed.href
+
+],
     {
       timeout: 60000,
       maxBuffer: 10 * 1024 * 1024,
