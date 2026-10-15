@@ -46,15 +46,19 @@ try {
   const result = await execFileAsync(
     "python3",
     [
-      "-m",
-      "yt_dlp",
-      "--dump-single-json",
-      "--no-warnings",
-      "--no-playlist",
-      "--skip-download",
-      "--format",
-      "best",
-      parsed.href
+      
+  "-m",
+  "yt_dlp",
+  "--dump-single-json",
+  "--no-warnings",
+  "--no-playlist",
+  "--skip-download",
+  "--format",
+  "best",
+  "--user-agent",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  parsed.href
+
     ],
     {
       timeout: 60000,
