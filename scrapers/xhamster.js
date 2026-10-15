@@ -3,7 +3,6 @@ const { getHtml, absoluteUrl } = require("./base");
 
 const BASE = "https://xhamster46.desi";
 
-// Extract an embedded JSON array safely.
 function extractJsonArray(html, propertyName) {
   const patterns = [
     `"${propertyName}"`,
@@ -14,14 +13,12 @@ function extractJsonArray(html, propertyName) {
 
   for (const pattern of patterns) {
     propertyIndex = html.indexOf(pattern);
-
     if (propertyIndex !== -1) break;
   }
 
   if (propertyIndex === -1) return null;
 
   const start = html.indexOf("[", propertyIndex);
-
   if (start === -1) return null;
 
   let depth = 0;
@@ -63,7 +60,6 @@ function extractJsonArray(html, propertyName) {
   return null;
 }
 
-// Format duration in seconds as MM:SS or HH:MM:SS.
 function formatDuration(seconds) {
   if (seconds == null || !Number.isFinite(Number(seconds))) {
     return null;
@@ -81,7 +77,6 @@ function formatDuration(seconds) {
     : `${pad(minutes)}:${pad(secs)}`;
 }
 
-// Format view count.
 function formatViews(views) {
   if (views == null || !Number.isFinite(Number(views))) {
     return null;
@@ -90,23 +85,69 @@ function formatViews(views) {
   return `${Number(views).toLocaleString("en-US")} views`;
 }
 
-// Normalize embedded video data.
+function firstValue(...values) {
+  return values.find(
+    (value) =>
+      typeof value === "string" &&
+      value.trim() !== ""
+  ) || null;
+}
+
 function normalizeVideo(video) {
+  const preview = firstValue(
+    video.trailerURL,
+    video.trailerFallbackUrl,
+    video.trailerUrl,
+    video.previewURL,
+    video.previewUrl,
+    video.previewVideoURL,
+    video.previewVideoUrl,
+    video.videoPreviewURL,
+    video.videoPreviewUrl
+  );
+
+  const thumbnail = firstValue(
+    video.thumbURL,
+    video.imageURL,
+    video.thumbUrl,
+    video.imageUrl
+  );
+
+  const previewThumbnail = firstValue(
+    video.previewThumbURL,
+    video.previewThumbnail,
+    video.previewThumbUrl,
+    thumbnail
+  );
+
   return {
     title: video.title || "",
-    videoUrl: absoluteUrl(video.pageURL),
-    thumbnail:
-      absoluteUrl(video.thumbURL) ||
-      absoluteUrl(video.imageURL),
-    preview: null,
-    previewThumbnail:
-      absoluteUrl(video.previewThumbURL) ||
-      absoluteUrl(video.thumbURL) ||
-      absoluteUrl(video.imageURL),
+    videoUrl: absoluteUrl(video.pageURL || video.url),
+    thumbnail: absoluteUrl(thumbnail),
+    preview: absoluteUrl(preview),
+    previewThumbnail: absoluteUrl(previewThumbnail),
     duration: formatDuration(video.duration),
     views: formatViews(video.views),
     source: "xhamster"
   };
+}
+
+function extractCardPreview(card) {
+  const video = card.find("video").first();
+  const source = card.find("video source").first();
+
+  return firstValue(
+    source.attr("src"),
+    source.attr("data-src"),
+    video.attr("src"),
+    video.attr("data-src"),
+    video.attr("data-preview"),
+    video.attr("data-preview-url"),
+    video.attr("data-trailer"),
+    video.attr("data-trailer-url"),
+    card.find("[data-preview-url]").first().attr("data-preview-url"),
+    card.find("[data-trailer-url]").first().attr("data-trailer-url")
+  );
 }
 
 async function search({ q, page = 1 }) {
@@ -124,7 +165,7 @@ async function search({ q, page = 1 }) {
   try {
     const html = await getHtml(searchUrl.href);
 
-    // Preferred method: embedded video data.
+    // Primary method: extract video data embedded in the HTML.
     const videoThumbProps = extractJsonArray(
       html,
       "videoThumbProps"
@@ -149,6 +190,11 @@ async function search({ q, page = 1 }) {
         results.length
       );
 
+      console.log(
+        "[xHamster] Results with previews:",
+        results.filter((video) => video.preview).length
+      );
+
       return {
         results,
         hasMore: results.length > 0,
@@ -156,7 +202,7 @@ async function search({ q, page = 1 }) {
       };
     }
 
-    // Fallback: extract video cards from HTML.
+    // Fallback method: parse video cards from HTML.
     const $ = cheerio.load(html);
     const results = [];
     const seen = new Set();
@@ -165,7 +211,9 @@ async function search({ q, page = 1 }) {
       const anchor = $(element);
       const videoUrl = absoluteUrl(anchor.attr("href"));
 
-      if (!videoUrl || seen.has(videoUrl)) return;
+      if (!videoUrl || seen.has(videoUrl)) {
+        return;
+      }
 
       let pathname;
 
@@ -189,23 +237,34 @@ async function search({ q, page = 1 }) {
         card.find("[class*='title']").first().text().trim() ||
         anchor.text().trim();
 
-      if (!title) return;
+      if (!title) {
+        return;
+      }
 
       const image = card.find("img").first();
 
       const thumbnail = absoluteUrl(
         image.attr("data-src") ||
-          image.attr("data-original") ||
-          image.attr("src")
+        image.attr("data-original") ||
+        image.attr("data-lazy-src") ||
+        image.attr("src")
       );
 
-      const durationText = (
-        card.find("[class*='duration']").first().text() || ""
-      ).trim();
+      const preview = absoluteUrl(
+        extractCardPreview(card)
+      );
 
-      const viewsText = (
-        card.find("[class*='views']").first().text() || ""
-      ).trim();
+      const durationText = card
+        .find("[class*='duration']")
+        .first()
+        .text()
+        .trim();
+
+      const viewsText = card
+        .find("[class*='views']")
+        .first()
+        .text()
+        .trim();
 
       seen.add(videoUrl);
 
@@ -213,7 +272,7 @@ async function search({ q, page = 1 }) {
         title,
         videoUrl,
         thumbnail,
-        preview: null,
+        preview,
         previewThumbnail: thumbnail,
         duration: durationText || null,
         views: viewsText || null,
@@ -224,6 +283,11 @@ async function search({ q, page = 1 }) {
     console.log(
       "[xHamster] Fallback results:",
       results.length
+    );
+
+    console.log(
+      "[xHamster] Results with previews:",
+      results.filter((video) => video.preview).length
     );
 
     return {
