@@ -1,17 +1,62 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10131b"><title>VideoFinder</title>
-  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="Search videos across supported websites."
+  />
+  <title>VideoFinder</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/app.js" defer></script>
 </head>
 <body>
-  <header class="app-header">
-    <div class="header-top"><a class="brand" href="/">VideoFinder</a><label class="saver"><input id="dataSaver" type="checkbox" checked> Data Saver</label></div>
-    <form id="searchForm" class="search-form"><input id="searchInput" type="search" maxlength="150" placeholder="Search videos..." autocomplete="off" required><button id="searchButton" type="submit">Search</button></form>
-    <div class="site-row"><label for="siteSelect">Website</label><select id="siteSelect"><option value="all">All supported sites</option><option value="xhamster">xHamster</option><option value="pornhub">Pornhub</option></select></div>
+  <header class="header">
+    <a class="logo" href="/">VideoFinder</a>
+    <label class="data-saver">
+      <input id="dataSaver" type="checkbox" checked />
+      <span>Data Saver</span>
+    </label>
   </header>
-  <main class="page"><section class="toolbar"><div><h1>Video results</h1><p id="status">Enter a search to get started.</p></div><span id="resultCount">0 results</span></section>
-    <section id="results" class="results" aria-label="Search results"></section><div id="scrollSentinel"></div><button id="loadMoreButton" class="load-more" type="button" hidden>Load more</button>
+
+  <main class="container">
+    <section class="search-panel">
+      <h1>Find videos</h1>
+      <p>Search supported websites from one place.</p>
+
+      <form id="searchForm">
+        <input
+          id="query"
+          type="search"
+          placeholder="Enter search terms..."
+          maxlength="200"
+          required
+        />
+
+        <select id="site">
+          <option value="all">All sites</option>
+          <option value="pornhub">Pornhub</option>
+          <option value="xhamster">xHamster</option>
+        </select>
+
+        <button id="searchButton" type="submit">Search</button>
+      </form>
+    </section>
+
+    <div id="status" class="status" role="status" aria-live="polite">
+      Enter a search query to begin.
+    </div>
+
+    <section id="results" class="results" aria-label="Search results"></section>
+
+    <button id="loadMore" class="load-more" type="button" hidden>
+      Load More
+    </button>
   </main>
-</body></html>
+
+  <footer>
+    VideoFinder displays metadata and preview URLs returned by supported sites.
+  </footer>
+</body>
+</html>
