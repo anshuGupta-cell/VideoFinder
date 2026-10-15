@@ -2,7 +2,7 @@ const express = require("express");
 const path = require("path");
 
 const { searchVideos, sites } = require("./scrapers");
-
+const { extractVideo } = require("./scrapers/videoExtractor");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -80,7 +80,31 @@ app.get("/api/search", async (req, res) => {
     });
   }
 });
+app.get("/api/extract", async (req, res) => {
+  try {
+    const { url } = req.query;
 
+    if (!url) {
+      return res.status(400).json({
+        error: "Missing URL. Provide ?url=VIDEO_PAGE_URL"
+      });
+    }
+
+    const result = await extractVideo(url);
+
+    res.json({
+      status: "success",
+      result
+    });
+  } catch (error) {
+    console.error("[Extract API]", error.message);
+
+    res.status(500).json({
+      status: "error",
+      error: error.message
+    });
+  }
+});
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/")) {
     return next();
