@@ -3,8 +3,7 @@ const { promisify } = require("util");
 
 const execFileAsync = promisify(execFile);
 
-const YT_DLP_COMMAND =
-  process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+const YT_DLP_COMMAND = "python3";
 
 async function extractVideo(url) {
   if (!url || typeof url !== "string") {
