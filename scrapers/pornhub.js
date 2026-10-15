@@ -1,7 +1,7 @@
 const cheerio = require("cheerio");
 const { getHtml, absoluteUrl } = require("./base");
 
-const BASE = "https://www.pornhub.com";
+const BASE = "https://www.pornhub.org";
 
 async function search({ q, page = 1 }) {
   const searchUrl = new URL("/video/search", BASE);
