@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131b"><title>VideoFinder</title>
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-top"><a class="brand" href="/">VideoFinder</a><label class="saver"><input id="dataSaver" type="checkbox" checked> Data Saver</label></div>
+    <form id="searchForm" class="search-form"><input id="searchInput" type="search" maxlength="150" placeholder="Search videos..." autocomplete="off" required><button id="searchButton" type="submit">Search</button></form>
+    <div class="site-row"><label for="siteSelect">Website</label><select id="siteSelect"><option value="all">All supported sites</option><option value="xhamster">xHamster</option><option value="pornhub">Pornhub</option></select></div>
+  </header>
+  <main class="page"><section class="toolbar"><div><h1>Video results</h1><p id="status">Enter a search to get started.</p></div><span id="resultCount">0 results</span></section>
+    <section id="results" class="results" aria-label="Search results"></section><div id="scrollSentinel"></div><button id="loadMoreButton" class="load-more" type="button" hidden>Load more</button>
+  </main>
+</body></html>
