@@ -5,6 +5,7 @@ const BASE = "https://www.pornhub.com";
 
 async function search({ q, page = 1 }) {
   const searchUrl = new URL("/video/search", BASE);
+
   searchUrl.searchParams.set("search", q);
 
   if (page > 1) {
@@ -19,20 +20,31 @@ async function search({ q, page = 1 }) {
   const results = [];
   const seen = new Set();
 
+  // Extract video information from search results.
   $("a.thumbnailTitle").each((_, element) => {
     const titleLink = $(element);
-    const title = titleLink.text().replace(/\s+/g, " ").trim();
-    const videoUrl = absoluteUrl(titleLink.attr("href"), BASE);
+
+    const title = titleLink
+      .text()
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const videoUrl = absoluteUrl(
+      titleLink.attr("href"),
+      BASE
+    );
 
     if (!title || !videoUrl || seen.has(videoUrl)) {
       return;
     }
 
-    // Find the nearest ancestor containing the thumbnail.
+    // Find the video card containing the title and thumbnail.
     let card = titleLink;
 
     for (let i = 0; i < 8; i++) {
-      if (!card.parent().length) break;
+      if (!card.parent().length) {
+        break;
+      }
 
       card = card.parent();
 
@@ -44,69 +56,84 @@ async function search({ q, page = 1 }) {
       }
     }
 
-    // Thumbnail
+    // Find the thumbnail.
     const image = card.find("img").first();
 
     const thumbnail = absoluteUrl(
       image.attr("data-src") ||
         image.attr("data-original") ||
-        image.attr("src") ||
-        image.attr("data-thumb_url"),
+        image.attr("data-thumb_url") ||
+        image.attr("data-poster") ||
+        image.attr("src"),
       BASE
     );
 
-    // Preview video URL
+    // Find the preview link.
+    // Pornhub may store the preview URL in data-webm.
     const previewLink = card
-      .find("a[data-webm], a[data-mp4], a[data-video-preview], a[data-preview]")
+      .find("a[data-webm], a[data-mp4]")
       .first();
-
-    const previewImage = card
-      .find("img[data-webm], img[data-mp4], img[data-video-preview], img[data-preview]")
-      .first();
-
-    const previewElement = card.find("video").first();
 
     const preview = absoluteUrl(
       previewLink.attr("data-webm") ||
         previewLink.attr("data-mp4") ||
-        previewLink.attr("data-video-preview") ||
-        previewLink.attr("data-preview") ||
-        previewImage.attr("data-webm") ||
-        previewImage.attr("data-mp4") ||
-        previewImage.attr("data-video-preview") ||
-        previewImage.attr("data-preview") ||
-        previewElement.attr("data-src") ||
-        previewElement.attr("src") ||
-        previewElement.find("source").first().attr("src"),
+        null,
       BASE
     );
 
-    // Duration
-    const duration = (
-      card.find(".duration, [class*='duration']").first().text() || ""
-    ).replace(/\s+/g, " ").trim();
+    // Prefer the poster attached to the preview link.
+    const previewThumbnail = absoluteUrl(
+      previewLink.attr("data-poster") ||
+        image.attr("data-poster") ||
+        image.attr("data-src") ||
+        image.attr("src"),
+      BASE
+    );
 
-    // Views
+    // Extract duration.
+    const duration = (
+      card
+        .find(".duration, [class*='duration']")
+        .first()
+        .text() || ""
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Extract view count.
     const views = (
-      card.find(".videoViews, [class*='views']").first().text() || ""
-    ).replace(/\s+/g, " ").trim();
+      card
+        .find(".videoViews, [class*='views']")
+        .first()
+        .text() || ""
+    )
+      .replace(/\s+/g, " ")
+      .trim();
 
     seen.add(videoUrl);
 
     results.push({
       title,
       videoUrl,
-      thumbnail,
+      thumbnail: thumbnail || null,
       preview: preview || null,
-      previewThumbnail: thumbnail,
+      previewThumbnail: previewThumbnail || thumbnail || null,
       duration,
       views,
       source: "pornhub"
     });
   });
 
-  console.log("[Pornhub] Title links:", $("a.thumbnailTitle").length);
-  console.log("[Pornhub] Extracted results:", results.length);
+  console.log(
+    "[Pornhub] Title links:",
+    $("a.thumbnailTitle").length
+  );
+
+  console.log(
+    "[Pornhub] Results extracted:",
+    results.length
+  );
+
   console.log(
     "[Pornhub] Results with previews:",
     results.filter((item) => item.preview).length
@@ -115,7 +142,7 @@ async function search({ q, page = 1 }) {
   return {
     results,
     hasMore: results.length > 0,
-    status: results.length ? "success" : "no_results"
+    status: results.length > 0 ? "success" : "no_results"
   };
 }
 
