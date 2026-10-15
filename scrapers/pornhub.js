@@ -3,6 +3,31 @@ const { getHtml, absoluteUrl } = require("./base");
 
 const BASE = "https://www.pornhub.com";
 
+function extractPreviewMap($) {
+  const previewMap = new Map();
+
+  $("[data-webm], [data-mp4]").each((_, element) => {
+    const el = $(element);
+
+    const preview =
+      el.attr("data-webm") ||
+      el.attr("data-mp4");
+
+    // Look for an ID on this element or one of its ancestors.
+    const videoId =
+      el.attr("data-video-id") ||
+      el.closest("[data-video-id]").attr("data-video-id");
+
+    if (videoId && preview) {
+      if (!previewMap.has(videoId)) {
+        previewMap.set(videoId, preview);
+      }
+    }
+  });
+
+  return previewMap;
+}
+
 async function search({ q, page = 1 }) {
   const searchUrl = new URL("/video/search", BASE);
 
@@ -20,21 +45,24 @@ async function search({ q, page = 1 }) {
   const results = [];
   const seen = new Set();
 
-  // Diagnose preview-related data in the actual response.
-  for (const keyword of [
-    "data-webm",
-    "data-mp4",
-    "previewUrl",
-    "mediaDefinitions",
-    "videoUrl"
-  ]) {
-    console.log(
-      `[Pornhub] ${keyword}:`,
-      html.indexOf(keyword)
-    );
-  }
+  // Build a map of video IDs to preview URLs.
+  const previewMap = extractPreviewMap($);
 
-  // Extract video information from search results.
+  console.log(
+    "[Pornhub] data-webm occurrences:",
+    (html.match(/data-webm/g) || []).length
+  );
+
+  console.log(
+    "[Pornhub] data-mp4 occurrences:",
+    (html.match(/data-mp4/g) || []).length
+  );
+
+  console.log(
+    "[Pornhub] Preview URLs discovered:",
+    previewMap.size
+  );
+
   $("a.thumbnailTitle").each((_, element) => {
     const titleLink = $(element);
 
@@ -52,7 +80,7 @@ async function search({ q, page = 1 }) {
       return;
     }
 
-    // Find the video card containing the thumbnail.
+    // Find the video card.
     let card = titleLink;
 
     for (let i = 0; i < 8; i++) {
@@ -68,7 +96,7 @@ async function search({ q, page = 1 }) {
       }
     }
 
-    // Thumbnail.
+    // Extract the thumbnail.
     const image = card.find("img").first();
 
     const thumbnail = absoluteUrl(
@@ -80,64 +108,78 @@ async function search({ q, page = 1 }) {
       BASE
     );
 
-    // Preview URL: inspect anchors and video elements.
+    // Extract the video ID from the video URL.
+    const viewKeyMatch = videoUrl.match(/[?&]viewkey=([^&]+)/);
+
+    const videoId =
+      card.attr("data-video-id") ||
+      card.find("[data-video-id]").first().attr("data-video-id") ||
+      titleLink.attr("data-video-id");
+
+    // Try matching the video's ID first.
+    let preview = videoId
+      ? previewMap.get(videoId)
+      : null;
+
+    // If IDs differ, inspect the title's surrounding HTML.
+    if (!preview) {
+      const ancestorHtml =
+        titleLink.parent().parent().parent().html() || "";
+
+      const webmMatch = ancestorHtml.match(
+        /data-webm=["']([^"']+)["']/
+      );
+
+      const mp4Match = ancestorHtml.match(
+        /data-mp4=["']([^"']+)["']/
+      );
+
+      preview = webmMatch?.[1] || mp4Match?.[1] || null;
+    }
+
+    // Decode common HTML entities and escaped slashes.
+    if (preview) {
+      preview = preview
+        .replace(/&amp;/g, "&")
+        .replace(/&#38;/g, "&")
+        .replace(/\\\//g, "/")
+        .replace(/&quot;/g, '"');
+    }
+
+    preview = absoluteUrl(preview, BASE);
+
+    // Extract poster image.
     const previewLink = card
-      .find("a[data-webm], a[data-mp4], a[data-preview]")
+      .find("a[data-poster]")
       .first();
 
-    const videoElement = card.find("video").first();
-
-    const previewSource = videoElement
-      .find("source")
-      .first();
-
-    const preview = absoluteUrl(
-      previewLink.attr("data-webm") ||
-        previewLink.attr("data-mp4") ||
-        previewLink.attr("data-preview") ||
-        videoElement.attr("data-webm") ||
-        videoElement.attr("data-src") ||
-        videoElement.attr("src") ||
-        previewSource.attr("src"),
-      BASE
-    );
-
-    // Preview poster.
     const previewThumbnail = absoluteUrl(
       previewLink.attr("data-poster") ||
-        videoElement.attr("poster") ||
         image.attr("data-poster") ||
         image.attr("data-src") ||
         image.attr("src"),
       BASE
     );
 
-    // Duration.
+    // Extract duration.
     const duration = (
       card.find(".duration, [class*='duration']").first().text() || ""
     )
       .replace(/\s+/g, " ")
       .trim();
 
-    // Views.
+    // Extract views.
     const views = (
-      card.find(".videoViews, [class*='views']").first().text() || ""
+      card.find(".videoViews, .views, [class*='views']").first().text() || ""
     )
       .replace(/\s+/g, " ")
       .trim();
 
-    // Log HTML for the first result to identify the real markup.
     if (results.length === 0) {
-      console.log("[Pornhub] First title:", title);
-      console.log(
-        "[Pornhub] First title ancestor HTML:",
-        titleLink.parent().parent().parent().html()?.slice(0, 6000)
-      );
-
-      console.log(
-        "[Pornhub] First card preview attributes:",
-        card.find("[data-webm], [data-mp4], [data-preview]").length
-      );
+      console.log("[Pornhub] First result:", title);
+      console.log("[Pornhub] First result video ID:", videoId);
+      console.log("[Pornhub] First result view key:", viewKeyMatch?.[1] || null);
+      console.log("[Pornhub] First result preview found:", Boolean(preview));
     }
 
     seen.add(videoUrl);
@@ -166,7 +208,7 @@ async function search({ q, page = 1 }) {
 
   console.log(
     "[Pornhub] Results with previews:",
-    results.filter(item => item.preview).length
+    results.filter((item) => item.preview).length
   );
 
   return {
