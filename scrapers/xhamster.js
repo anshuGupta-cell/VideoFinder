@@ -1,165 +1,244 @@
 const cheerio = require("cheerio");
+const { getHtml, absoluteUrl } = require("./base");
 
-const {
-  getHtml,
-  absoluteUrl,
-  formatViews,
-  formatDuration
-} = require("./base");
+const BASE = "https://xhamster46.desi";
 
-const BASE = "https://xhamster.com";
+// Extract an embedded JSON array safely.
+function extractJsonArray(html, propertyName) {
+  const patterns = [
+    `"${propertyName}"`,
+    `\\u0022${propertyName}\\u0022`
+  ];
 
-function firstText($, element, selectors) {
-  for (const selector of selectors) {
-    const value = $(element)
-      .find(selector)
-      .first()
-      .text()
-      .replace(/\s+/g, " ")
-      .trim();
+  let propertyIndex = -1;
 
-    if (value) return value;
+  for (const pattern of patterns) {
+    propertyIndex = html.indexOf(pattern);
+
+    if (propertyIndex !== -1) break;
   }
 
-  return "";
-}
+  if (propertyIndex === -1) return null;
 
-function firstAttribute($, element, selectors, attribute) {
-  for (const selector of selectors) {
-    const value = $(element)
-      .find(selector)
-      .first()
-      .attr(attribute);
+  const start = html.indexOf("[", propertyIndex);
 
-    if (value) return value;
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < html.length; i++) {
+    const char = html[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === "[") {
+      depth++;
+    } else if (char === "]") {
+      depth--;
+
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(start, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
   }
 
   return null;
 }
 
-async function search({ q, page = 1 }) {
-  const searchUrl = new URL("/search", BASE);
+// Format duration in seconds as MM:SS or HH:MM:SS.
+function formatDuration(seconds) {
+  if (seconds == null || !Number.isFinite(Number(seconds))) {
+    return null;
+  }
 
-  searchUrl.searchParams.set("q", q);
+  const total = Math.max(0, Math.floor(Number(seconds)));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+
+  const pad = (n) => String(n).padStart(2, "0");
+
+  return hours > 0
+    ? `${pad(hours)}:${pad(minutes)}:${pad(secs)}`
+    : `${pad(minutes)}:${pad(secs)}`;
+}
+
+// Format view count.
+function formatViews(views) {
+  if (views == null || !Number.isFinite(Number(views))) {
+    return null;
+  }
+
+  return `${Number(views).toLocaleString("en-US")} views`;
+}
+
+// Normalize embedded video data.
+function normalizeVideo(video) {
+  return {
+    title: video.title || "",
+    videoUrl: absoluteUrl(video.pageURL),
+    thumbnail:
+      absoluteUrl(video.thumbURL) ||
+      absoluteUrl(video.imageURL),
+    preview: null,
+    previewThumbnail:
+      absoluteUrl(video.previewThumbURL) ||
+      absoluteUrl(video.thumbURL) ||
+      absoluteUrl(video.imageURL),
+    duration: formatDuration(video.duration),
+    views: formatViews(video.views),
+    source: "xhamster"
+  };
+}
+
+async function search({ q, page = 1 }) {
+  const searchUrl = new URL(
+    "/search/" + encodeURIComponent(q).replace(/%20/g, "+"),
+    BASE
+  );
 
   if (page > 1) {
     searchUrl.searchParams.set("page", String(page));
   }
 
-  const html = await getHtml(searchUrl.href);
-  const $ = cheerio.load(html);
-  const results = [];
-  const seen = new Set();
+  console.log("[xHamster] Requesting:", searchUrl.href);
 
-  const selectors = [
-    ".thumb-list__item",
-    ".video-thumb",
-    ".thumb-list .thumb",
-    "article",
-    "[data-video-id]"
-  ];
+  try {
+    const html = await getHtml(searchUrl.href);
 
-  let cards = $();
-
-  for (const selector of selectors) {
-    const found = $(selector);
-
-    if (found.length) {
-      cards = found;
-      break;
-    }
-  }
-
-  cards.each((_, element) => {
-    const card = $(element);
-
-    const titleLink = card
-      .find('a[href*="/videos/"], a[href*="/video/"]')
-      .first();
-
-    const image = card.find("img").first();
-
-    const title =
-      titleLink.attr("title") ||
-      image.attr("alt") ||
-      firstText($, element, [
-        ".thumb-title",
-        ".title",
-        "[class*='title']"
-      ]);
-
-    const videoUrl = absoluteUrl(
-      titleLink.attr("href"),
-      BASE
+    // Preferred method: embedded video data.
+    const videoThumbProps = extractJsonArray(
+      html,
+      "videoThumbProps"
     );
 
-    if (!title || !videoUrl || seen.has(videoUrl)) {
-      return;
+    if (Array.isArray(videoThumbProps)) {
+      const results = videoThumbProps
+        .filter(
+          (video) =>
+            video &&
+            video.videoType === "video"
+        )
+        .map(normalizeVideo)
+        .filter(
+          (video) =>
+            video.title &&
+            video.videoUrl
+        );
+
+      console.log(
+        "[xHamster] Embedded results:",
+        results.length
+      );
+
+      return {
+        results,
+        hasMore: results.length > 0,
+        status: results.length ? "success" : "no_results"
+      };
     }
 
-    seen.add(videoUrl);
+    // Fallback: extract video cards from HTML.
+    const $ = cheerio.load(html);
+    const results = [];
+    const seen = new Set();
 
-    const thumbnail = absoluteUrl(
-      image.attr("data-src") ||
-        image.attr("data-original") ||
-        image.attr("src") ||
-        image.attr("data-preview"),
-      BASE
-    );
+    $('a[href*="/videos/"]').each((_, element) => {
+      const anchor = $(element);
+      const videoUrl = absoluteUrl(anchor.attr("href"));
 
-    const preview = absoluteUrl(
-      firstAttribute(
-        $,
-        element,
-        [
-          "video",
-          "[data-preview]",
-          "[data-preview-url]",
-          "[data-video-preview]"
-        ],
-        "src"
-      ) ||
-        card.find("video").attr("data-src") ||
-        card.attr("data-preview") ||
-        card.attr("data-preview-url") ||
-        card.attr("data-video-preview"),
-      BASE
-    );
+      if (!videoUrl || seen.has(videoUrl)) return;
 
-    const duration = formatDuration(
-      firstText($, element, [
-        ".thumb-image-container__duration",
-        ".duration",
-        "[class*='duration']"
-      ])
-    );
+      let pathname;
 
-    const views = formatViews(
-      firstText($, element, [
-        ".thumb-views",
-        ".views",
-        "[class*='views']"
-      ])
-    );
+      try {
+        pathname = new URL(videoUrl).pathname;
+      } catch {
+        return;
+      }
 
-    results.push({
-      id: card.attr("data-video-id") || null,
-      title,
-      videoUrl,
-      thumbnail,
-      preview,
-      previewThumbnail: thumbnail,
-      duration,
-      views,
-      source: "xhamster"
+      if (!/^\/videos\/[^/]+\/?$/i.test(pathname)) {
+        return;
+      }
+
+      const card = anchor.closest(
+        "article, .thumb-list__item, .video-thumb, .thumb"
+      );
+
+      const title =
+        anchor.attr("title") ||
+        anchor.attr("aria-label") ||
+        card.find("[class*='title']").first().text().trim() ||
+        anchor.text().trim();
+
+      if (!title) return;
+
+      const image = card.find("img").first();
+
+      const thumbnail = absoluteUrl(
+        image.attr("data-src") ||
+          image.attr("data-original") ||
+          image.attr("src")
+      );
+
+      const durationText = (
+        card.find("[class*='duration']").first().text() || ""
+      ).trim();
+
+      const viewsText = (
+        card.find("[class*='views']").first().text() || ""
+      ).trim();
+
+      seen.add(videoUrl);
+
+      results.push({
+        title,
+        videoUrl,
+        thumbnail,
+        preview: null,
+        previewThumbnail: thumbnail,
+        duration: durationText || null,
+        views: viewsText || null,
+        source: "xhamster"
+      });
     });
-  });
 
-  return {
-    results,
-    hasMore: results.length > 0,
-    status: results.length ? "success" : "no_results"
-  };
+    console.log(
+      "[xHamster] Fallback results:",
+      results.length
+    );
+
+    return {
+      results,
+      hasMore: results.length > 0,
+      status: results.length ? "success" : "no_results"
+    };
+  } catch (error) {
+    console.error(
+      "[xHamster] Scraping error:",
+      error.message
+    );
+
+    throw error;
+  }
 }
 
 module.exports = { search };
