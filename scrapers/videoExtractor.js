@@ -40,21 +40,22 @@ async function extractVideo(url) {
 
   console.log("[VideoExtractor] Extracting:", parsed.href);
 
-  const { stdout } = await execFileAsync(
-    YT_DLP_COMMAND,
-    [
-      
-  "-m",
-  "yt_dlp",
-  "--dump-single-json",
-  "--no-warnings",
-  "--no-playlist",
-  "--skip-download",
-  "--format",
-  "best",
-  parsed.href
+  let stdout;
 
-],
+try {
+  const result = await execFileAsync(
+    "python3",
+    [
+      "-m",
+      "yt_dlp",
+      "--dump-single-json",
+      "--no-warnings",
+      "--no-playlist",
+      "--skip-download",
+      "--format",
+      "best",
+      parsed.href
+    ],
     {
       timeout: 60000,
       maxBuffer: 10 * 1024 * 1024,
@@ -62,7 +63,16 @@ async function extractVideo(url) {
     }
   );
 
-  const data = JSON.parse(stdout);
+  stdout = result.stdout;
+} catch (error) {
+  console.error("[yt-dlp] Extraction failed:", error.stderr || error.message);
+
+  throw new Error(
+    (error.stderr || error.message || "Video extraction failed").trim()
+  );
+}
+
+const data = JSON.parse(stdout);
 
   const formats = (data.formats || [])
     .filter((format) => format.url)
