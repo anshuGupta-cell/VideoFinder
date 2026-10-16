@@ -62,6 +62,30 @@ app.get("/api/txnhh/extract", async (req, res) => {
     });
   }
 });
+const txnhhExtractor = require("./scrapers/txnhhExtractor");
+
+app.get("/api/txnhh/formats", async (req, res) => {
+  try {
+    if (!req.query.url) {
+      return res.status(400).json({
+        status: "error",
+        error: "Missing url parameter"
+      });
+    }
+
+    const result = await txnhhExtractor.extractVideo(req.query.url);
+
+    res.json({
+      status: "success",
+      result
+    });
+  } catch (error) {
+    res.status(502).json({
+      status: "error",
+      error: error.message
+    });
+  }
+});
 app.get("/api/search", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const site = String(req.query.site || "all").toLowerCase();
