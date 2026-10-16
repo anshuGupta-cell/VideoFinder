@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 
 const { searchVideos, sites } = require("./scrapers");
+const txnhh = require("./scrapers/txnhh");
 const { extractVideo } = require("./scrapers/videoExtractor");
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,7 +28,40 @@ app.get("/api/sites", (req, res) => {
     ]
   });
 });
+app.get("/api/txnhh/search", async (req, res) => {
+  try {
+    const result = await txnhh.search(
+      req.query.q,
+      req.query.page || 1
+    );
 
+    res.json({
+      status: "success",
+      ...result
+    });
+  } catch (error) {
+    res.status(502).json({
+      status: "error",
+      error: error.message
+    });
+  }
+});
+
+app.get("/api/txnhh/extract", async (req, res) => {
+  try {
+    const result = await txnhh.extractVideo(req.query.url);
+
+    res.json({
+      status: "success",
+      result
+    });
+  } catch (error) {
+    res.status(502).json({
+      status: "error",
+      error: error.message
+    });
+  }
+});
 app.get("/api/search", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const site = String(req.query.site || "all").toLowerCase();
